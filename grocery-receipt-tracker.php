@@ -20,6 +20,7 @@ define( 'GRT_PLUGIN_FILE', __FILE__ );
 require_once GRT_PLUGIN_DIR . 'includes/class-activator.php';
 require_once GRT_PLUGIN_DIR . 'includes/class-rest-api.php';
 require_once GRT_PLUGIN_DIR . 'includes/class-ocr-processor.php';
+require_once GRT_PLUGIN_DIR . 'includes/class-receipt-parser.php';
 
 register_activation_hook( __FILE__, array( 'GRT_Activator', 'activate' ) );
 
