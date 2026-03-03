@@ -127,7 +127,7 @@ function grt_pwa_head() {
         return;
     }
     $manifest_url = rest_url( 'grt/v1/manifest.json' );
-    $sw_url       = GRT_PLUGIN_URL . 'src/service-worker.js';
+    $sw_url       = GRT_PLUGIN_URL . 'assets/service-worker.js';
     echo '<link rel="manifest" href="' . esc_url( $manifest_url ) . '">' . "\n";
     echo '<meta name="theme-color" content="#0073aa">' . "\n";
     echo '<script>

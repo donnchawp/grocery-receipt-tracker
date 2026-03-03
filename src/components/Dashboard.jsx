@@ -37,7 +37,7 @@ export function Dashboard( { onNavigate } ) {
 
             <button
                 className="grt-btn grt-btn-primary grt-scan-btn"
-                onClick={ () => onNavigate( 'camera' ) }
+                onClick={ () => onNavigate( 'CAMERA' ) }
             >
                 Scan Receipt
             </button>

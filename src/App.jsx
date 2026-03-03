@@ -41,6 +41,9 @@ export function App() {
 					/>
 				);
 			case SCREENS.REVIEW:
+				if ( ! scanResult ) {
+					return <Dashboard onNavigate={ navigate } />;
+				}
 				return (
 					<ReceiptReview
 						scanResult={ scanResult }

@@ -143,6 +143,12 @@ class GRT_REST_API {
             return new WP_Error( 'missing_fields', 'Store, date, and items are required.', array( 'status' => 400 ) );
         }
 
+        // Validate date format.
+        if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $receipt_date )
+            || ! checkdate( (int) substr( $receipt_date, 5, 2 ), (int) substr( $receipt_date, 8, 2 ), (int) substr( $receipt_date, 0, 4 ) ) ) {
+            return new WP_Error( 'invalid_date', 'Date must be a valid YYYY-MM-DD.', array( 'status' => 400 ) );
+        }
+
         // Calculate total.
         $total = array_sum( array_column( $items, 'final_price' ) );
 

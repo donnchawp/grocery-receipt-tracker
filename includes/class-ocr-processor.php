@@ -37,11 +37,25 @@ class GRT_OCR_Processor {
             );
         }
 
+        if ( filesize( $image_path ) > 10 * 1024 * 1024 ) {
+            return array(
+                'success' => false,
+                'error'   => 'Image too large for OCR (max 10MB).',
+            );
+        }
+
         $escaped_path = escapeshellarg( $image_path );
         $output       = array();
         $return_code  = 0;
 
-        exec( "tesseract {$escaped_path} stdout --psm 6 2>/dev/null", $output, $return_code );
+        exec( "timeout 30 tesseract {$escaped_path} stdout --psm 6 2>/dev/null", $output, $return_code );
+
+        if ( $return_code === 124 ) {
+            return array(
+                'success' => false,
+                'error'   => 'OCR processing timed out.',
+            );
+        }
 
         if ( $return_code !== 0 ) {
             return array(

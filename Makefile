@@ -12,6 +12,7 @@ install: ## Install npm dependencies
 
 build: ## Build React frontend for production
 	npm run build
+	cp src/service-worker.js assets/service-worker.js
 
 dev: ## Start React dev server with hot reload
 	npm run start
