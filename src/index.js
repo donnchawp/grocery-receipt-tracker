@@ -1,10 +1,8 @@
 import { createRoot } from '@wordpress/element';
-
-function App() {
-    return <div>Grocery Receipt Tracker loading...</div>;
-}
+import { App } from './App';
+import './index.css';
 
 const container = document.getElementById( 'grt-app' );
 if ( container ) {
-    createRoot( container ).render( <App /> );
+	createRoot( container ).render( <App /> );
 }

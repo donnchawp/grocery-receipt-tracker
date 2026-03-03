@@ -1,0 +1,90 @@
+.grt-app {
+	max-width: 600px;
+	margin: 0 auto;
+	padding: 0 16px;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+		Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+.grt-nav {
+	display: flex;
+	border-bottom: 1px solid #e0e0e0;
+	position: sticky;
+	top: 0;
+	background: #fff;
+	z-index: 10;
+}
+
+.grt-nav button {
+	flex: 1;
+	border: none;
+	background: none;
+	padding: 12px 8px;
+	font-size: 14px;
+	font-weight: 500;
+	color: #666;
+	border-bottom: 2px solid transparent;
+	cursor: pointer;
+}
+
+.grt-nav button.active {
+	color: #0073aa;
+	border-bottom-color: #0073aa;
+}
+
+.grt-main {
+	padding-bottom: 32px;
+}
+
+.grt-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 10px 20px;
+	border-radius: 6px;
+	font-size: 14px;
+	cursor: pointer;
+	border: none;
+}
+
+.grt-btn-primary {
+	background: #0073aa;
+	color: #fff;
+}
+
+.grt-btn-primary:hover {
+	background: #005a87;
+}
+
+.grt-btn-secondary {
+	background: #e0e0e0;
+	color: #333;
+}
+
+.grt-btn-danger {
+	background: #d32f2f;
+	color: #fff;
+}
+
+.grt-input {
+	width: 100%;
+	padding: 8px 12px;
+	border: 1px solid #ccc;
+	border-radius: 4px;
+	font-size: 14px;
+	box-sizing: border-box;
+}
+
+.grt-loading {
+	text-align: center;
+	padding: 32px;
+	color: #666;
+}
+
+.grt-error {
+	padding: 12px;
+	background: #fce4e4;
+	color: #c62828;
+	border-radius: 4px;
+	margin-bottom: 16px;
+}
