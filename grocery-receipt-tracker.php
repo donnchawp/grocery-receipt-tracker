@@ -83,3 +83,57 @@ function grt_admin_notices() {
     }
 }
 add_action( 'admin_notices', 'grt_admin_notices' );
+
+/**
+ * Register the web app manifest endpoint.
+ */
+function grt_manifest_route() {
+    register_rest_route( 'grt/v1', '/manifest.json', array(
+        'methods'             => 'GET',
+        'callback'            => 'grt_serve_manifest',
+        'permission_callback' => '__return_true',
+    ) );
+}
+add_action( 'rest_api_init', 'grt_manifest_route' );
+
+function grt_serve_manifest() {
+    return new WP_REST_Response( array(
+        'name'             => 'Grocery Receipt Tracker',
+        'short_name'       => 'GroceryTracker',
+        'start_url'        => home_url( '/grocery-tracker/' ),
+        'display'          => 'standalone',
+        'background_color' => '#ffffff',
+        'theme_color'      => '#0073aa',
+        'icons'            => array(
+            array(
+                'src'   => GRT_PLUGIN_URL . 'assets/icon-192.png',
+                'sizes' => '192x192',
+                'type'  => 'image/png',
+            ),
+            array(
+                'src'   => GRT_PLUGIN_URL . 'assets/icon-512.png',
+                'sizes' => '512x512',
+                'type'  => 'image/png',
+            ),
+        ),
+    ), 200, array( 'Content-Type' => 'application/manifest+json' ) );
+}
+
+/**
+ * Add manifest link and SW registration to head.
+ */
+function grt_pwa_head() {
+    if ( ! is_page( 'grocery-tracker' ) ) {
+        return;
+    }
+    $manifest_url = rest_url( 'grt/v1/manifest.json' );
+    $sw_url       = GRT_PLUGIN_URL . 'src/service-worker.js';
+    echo '<link rel="manifest" href="' . esc_url( $manifest_url ) . '">' . "\n";
+    echo '<meta name="theme-color" content="#0073aa">' . "\n";
+    echo '<script>
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("' . esc_url( $sw_url ) . '");
+        }
+    </script>' . "\n";
+}
+add_action( 'wp_head', 'grt_pwa_head' );
