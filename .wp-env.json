@@ -1,7 +1,8 @@
 {
 	"core": null,
 	"plugins": [
-		"."
+		".",
+		"https://downloads.wordpress.org/plugin/plugin-check.latest-stable.zip"
 	],
 	"lifecycleScripts": {
 		"afterStart": "npx wp-env run wordpress --env-cwd=/ -- sudo apt-get update -qq && npx wp-env run wordpress --env-cwd=/ -- sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-eng"
