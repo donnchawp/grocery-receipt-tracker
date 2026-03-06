@@ -1,5 +1,6 @@
 import { useState } from '@wordpress/element';
 import { CameraCapture } from './components/CameraCapture';
+import { CsvImport } from './components/CsvImport';
 import { ReceiptReview } from './components/ReceiptReview';
 import { ReceiptList } from './components/ReceiptList';
 import { Dashboard } from './components/Dashboard';
@@ -8,6 +9,7 @@ import { ProductDetail } from './components/ProductDetail';
 const SCREENS = {
 	DASHBOARD: 'DASHBOARD',
 	CAMERA: 'CAMERA',
+	CSV_IMPORT: 'CSV_IMPORT',
 	REVIEW: 'REVIEW',
 	RECEIPTS: 'RECEIPTS',
 	PRODUCT: 'PRODUCT',
@@ -34,6 +36,16 @@ export function App() {
 				return (
 					<CameraCapture
 						onScanComplete={ ( result ) =>
+							navigate( SCREENS.REVIEW, {
+								scanResult: result,
+							} )
+						}
+					/>
+				);
+			case SCREENS.CSV_IMPORT:
+				return (
+					<CsvImport
+						onResult={ ( result ) =>
 							navigate( SCREENS.REVIEW, {
 								scanResult: result,
 							} )

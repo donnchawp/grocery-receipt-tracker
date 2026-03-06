@@ -6,6 +6,7 @@ export function ReceiptReview( { scanResult, onSaved, onCancel } ) {
     const [ store, setStore ] = useState( scanResult.store || '' );
     const [ date, setDate ] = useState( scanResult.date || '' );
     const [ items, setItems ] = useState( scanResult.items || [] );
+    const [ voucherDiscount, setVoucherDiscount ] = useState( scanResult.voucher_discount || 0 );
     const [ products, setProducts ] = useState( [] );
     const [ saving, setSaving ] = useState( false );
     const [ error, setError ] = useState( null );
@@ -60,6 +61,7 @@ export function ReceiptReview( { scanResult, onSaved, onCancel } ) {
                     store,
                     date,
                     items,
+                    voucher_discount: parseFloat( voucherDiscount ) || 0,
                     raw_text: scanResult.raw_text || '',
                     attachment_id: scanResult.attachment_id || 0,
                 },
@@ -71,10 +73,11 @@ export function ReceiptReview( { scanResult, onSaved, onCancel } ) {
         }
     };
 
-    const total = items.reduce(
+    const itemsTotal = items.reduce(
         ( sum, item ) => sum + parseFloat( item.final_price || 0 ),
         0
     );
+    const total = itemsTotal - ( parseFloat( voucherDiscount ) || 0 );
 
     return (
         <div className="grt-review">
@@ -182,6 +185,17 @@ export function ReceiptReview( { scanResult, onSaved, onCancel } ) {
                     + Add Item
                 </button>
 
+                <div className="grt-voucher-row">
+                    <label>Voucher Discount</label>
+                    <input
+                        className="grt-input grt-input-sm"
+                        type="number"
+                        step="0.01"
+                        value={ voucherDiscount }
+                        onChange={ ( e ) => setVoucherDiscount( e.target.value ) }
+                    />
+                </div>
+
                 <div className="grt-total">
                     Total: &euro;{ total.toFixed( 2 ) }
                 </div>
@@ -255,6 +269,21 @@ export function ReceiptReview( { scanResult, onSaved, onCancel } ) {
                 .grt-btn-icon:hover { color: #d32f2f; }
                 .grt-review-footer {
                     margin-top: 16px;
+                }
+                .grt-voucher-row {
+                    display: flex;
+                    justify-content: flex-end;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 0;
+                }
+                .grt-voucher-row label {
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #555;
+                }
+                .grt-voucher-row input {
+                    width: 100px;
                 }
                 .grt-total {
                     font-size: 18px;

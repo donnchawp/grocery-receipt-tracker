@@ -190,6 +190,9 @@ export function ReceiptList( { onSelectProduct } ) {
                     padding: 4px 0;
                     font-size: 13px;
                 }
+                .grt-receipt-date {
+                    margin-left: 8px;
+                }
                 .grt-pagination {
                     display: flex;
                     justify-content: center;

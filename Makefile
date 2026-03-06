@@ -1,4 +1,4 @@
-.PHONY: help build dev lint test clean install env-start env-stop env-destroy env-logs env-cli env-shell
+.PHONY: help build dev lint test clean install env-start env-stop env-destroy env-logs env-cli env-shell ollama-setup
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -48,3 +48,13 @@ env-cli: ## Open WP-CLI shell (usage: make env-cli CMD="plugin list")
 
 env-shell: ## Open bash shell in WordPress container
 	npx wp-env run wordpress bash
+
+## --- Ollama ---
+
+ollama-setup: ## Pull the default LLM and vision models (requires: brew install ollama)
+	@command -v ollama >/dev/null 2>&1 || { echo "Ollama not found. Install with: brew install ollama"; exit 1; }
+	ollama pull qwen2.5:3b
+	ollama pull gemma3:4b
+	@echo ""
+	@echo "Done. Start Ollama with: ollama serve"
+	@echo "Then enable the LLM parser in WP Admin → Settings → Receipt Tracker LLM"

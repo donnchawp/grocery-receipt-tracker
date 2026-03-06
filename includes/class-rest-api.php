@@ -104,7 +104,23 @@ class GRT_REST_API {
 
         $image_path = get_attached_file( $attachment_id );
 
-        // Run OCR.
+        // Try vision model first (bypasses OCR entirely).
+        $llm_parser = new GRT_LLM_Parser();
+        if ( $llm_parser->can_parse_image() ) {
+            $vision_result = $llm_parser->parse_image( $image_path );
+            if ( empty( $vision_result['_llm_failed'] ) ) {
+                return rest_ensure_response( array(
+                    'attachment_id'    => $attachment_id,
+                    'raw_text'         => '',
+                    'store'            => $vision_result['store'],
+                    'date'             => $vision_result['date'],
+                    'voucher_discount' => $vision_result['voucher_discount'] ?? 0,
+                    'items'            => $vision_result['items'],
+                ) );
+            }
+        }
+
+        // Fall back to Tesseract + text parsing.
         $ocr_result = GRT_OCR_Processor::process( $image_path );
 
         if ( ! $ocr_result['success'] ) {
@@ -116,11 +132,12 @@ class GRT_REST_API {
         $parsed = $parser->parse( $ocr_result['text'] );
 
         return rest_ensure_response( array(
-            'attachment_id' => $attachment_id,
-            'raw_text'      => $ocr_result['text'],
-            'store'         => $parsed['store'],
-            'date'          => $parsed['date'],
-            'items'         => $parsed['items'],
+            'attachment_id'    => $attachment_id,
+            'raw_text'         => $ocr_result['text'],
+            'store'            => $parsed['store'],
+            'date'             => $parsed['date'],
+            'voucher_discount' => $parsed['voucher_discount'] ?? 0,
+            'items'            => $parsed['items'],
         ) );
     }
 
@@ -133,11 +150,12 @@ class GRT_REST_API {
 
         $body = $request->get_json_params();
 
-        $store         = sanitize_text_field( $body['store'] ?? '' );
-        $receipt_date  = sanitize_text_field( $body['date'] ?? '' );
-        $items         = $body['items'] ?? array();
-        $raw_ocr_text  = $body['raw_text'] ?? '';
-        $attachment_id = absint( $body['attachment_id'] ?? 0 );
+        $store            = sanitize_text_field( $body['store'] ?? '' );
+        $receipt_date     = sanitize_text_field( $body['date'] ?? '' );
+        $items            = $body['items'] ?? array();
+        $raw_ocr_text     = $body['raw_text'] ?? '';
+        $attachment_id    = absint( $body['attachment_id'] ?? 0 );
+        $voucher_discount = (float) ( $body['voucher_discount'] ?? 0 );
 
         if ( empty( $store ) || empty( $receipt_date ) || empty( $items ) ) {
             return new WP_Error( 'missing_fields', 'Store, date, and items are required.', array( 'status' => 400 ) );
@@ -150,7 +168,7 @@ class GRT_REST_API {
         }
 
         // Calculate total.
-        $total = array_sum( array_column( $items, 'final_price' ) );
+        $total = array_sum( array_column( $items, 'final_price' ) ) - $voucher_discount;
 
         // Insert receipt.
         $wpdb->insert(
@@ -160,10 +178,11 @@ class GRT_REST_API {
                 'store'               => $store,
                 'receipt_date'        => $receipt_date,
                 'total'               => $total,
+                'voucher_discount'    => $voucher_discount,
                 'image_attachment_id' => $attachment_id ?: null,
                 'raw_ocr_text'        => $raw_ocr_text,
             ),
-            array( '%d', '%s', '%s', '%f', '%d', '%s' )
+            array( '%d', '%s', '%s', '%f', '%f', '%d', '%s' )
         );
 
         $receipt_id = $wpdb->insert_id;
@@ -284,7 +303,7 @@ class GRT_REST_API {
         $args[] = $offset;
 
         $receipts = $wpdb->get_results( $wpdb->prepare(
-            "SELECT id, store, receipt_date, total, image_attachment_id, created_at
+            "SELECT id, store, receipt_date, total, voucher_discount, image_attachment_id, created_at
              FROM {$prefix}receipts {$where}
              ORDER BY receipt_date DESC
              LIMIT %d OFFSET %d",

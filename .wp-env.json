@@ -4,7 +4,7 @@
 		"."
 	],
 	"lifecycleScripts": {
-		"afterStart": "npx wp-env run wordpress -- apt-get update -qq && npx wp-env run wordpress -- apt-get install -y -qq tesseract-ocr tesseract-ocr-eng"
+		"afterStart": "npx wp-env run wordpress --env-cwd=/ -- sudo apt-get update -qq && npx wp-env run wordpress --env-cwd=/ -- sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-eng"
 	},
 	"env": {
 		"development": {

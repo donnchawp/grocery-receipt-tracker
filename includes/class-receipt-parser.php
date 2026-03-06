@@ -6,13 +6,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/parsers/class-parser-interface.php';
 require_once __DIR__ . '/parsers/class-generic-parser.php';
+require_once __DIR__ . '/class-llm-parser.php';
 
 class GRT_Receipt_Parser {
 
     /** @var GRT_Parser_Interface[] */
     private array $parsers = array();
 
+    private GRT_LLM_Parser $llm_parser;
+
     public function __construct() {
+        $this->llm_parser = new GRT_LLM_Parser();
         $this->load_parsers();
     }
 
@@ -41,6 +45,15 @@ class GRT_Receipt_Parser {
     }
 
     public function parse( string $raw_text ): array {
+        // Try LLM parser first if available.
+        if ( $this->llm_parser->can_parse( $raw_text ) ) {
+            $result = $this->llm_parser->parse( $raw_text );
+            if ( empty( $result['_llm_failed'] ) ) {
+                return $result;
+            }
+        }
+
+        // Fall back to regex-based parsers.
         foreach ( $this->parsers as $parser ) {
             if ( $parser->can_parse( $raw_text ) ) {
                 return $parser->parse( $raw_text );

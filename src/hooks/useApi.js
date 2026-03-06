@@ -23,7 +23,11 @@ export function useApi() {
 			config.body = isFormData ? body : JSON.stringify( body );
 		}
 
-		const response = await fetch( `${ API_URL }${ endpoint }`, config );
+		// When API_URL already contains query params (e.g. ?rest_route=...),
+		// any ? in the endpoint must become & to avoid a malformed URL.
+		const separator = API_URL.includes( '?' ) ? '&' : '?';
+		const url = `${ API_URL }${ endpoint.replace( '?', separator ) }`;
+		const response = await fetch( url, config );
 
 		if ( ! response.ok ) {
 			const error = await response.json().catch( () => ( {} ) );

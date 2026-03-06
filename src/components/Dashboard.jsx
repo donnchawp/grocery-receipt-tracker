@@ -35,12 +35,20 @@ export function Dashboard( { onNavigate } ) {
                 </div>
             </div>
 
-            <button
-                className="grt-btn grt-btn-primary grt-scan-btn"
-                onClick={ () => onNavigate( 'CAMERA' ) }
-            >
-                Scan Receipt
-            </button>
+            <div className="grt-action-buttons">
+                <button
+                    className="grt-btn grt-btn-primary grt-scan-btn"
+                    onClick={ () => onNavigate( 'CAMERA' ) }
+                >
+                    Scan Receipt
+                </button>
+                <button
+                    className="grt-btn grt-btn-secondary grt-scan-btn"
+                    onClick={ () => onNavigate( 'CSV_IMPORT' ) }
+                >
+                    Paste CSV
+                </button>
+            </div>
 
             { loading ? (
                 <div className="grt-loading">Loading...</div>
@@ -91,11 +99,16 @@ export function Dashboard( { onNavigate } ) {
                     font-size: 12px;
                     color: #666;
                 }
+                .grt-action-buttons {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 12px;
+                    margin-bottom: 24px;
+                }
                 .grt-scan-btn {
                     width: 100%;
                     padding: 16px;
                     font-size: 16px;
-                    margin-bottom: 24px;
                 }
                 .grt-receipt-card {
                     display: flex;

@@ -22,6 +22,7 @@ class GRT_Activator {
             store varchar(100) NOT NULL DEFAULT '',
             receipt_date date NOT NULL,
             total decimal(10,2) NOT NULL DEFAULT 0,
+            voucher_discount decimal(10,2) NOT NULL DEFAULT 0,
             image_attachment_id bigint(20) unsigned DEFAULT NULL,
             raw_ocr_text longtext DEFAULT NULL,
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,

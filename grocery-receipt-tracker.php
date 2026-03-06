@@ -21,8 +21,11 @@ require_once GRT_PLUGIN_DIR . 'includes/class-activator.php';
 require_once GRT_PLUGIN_DIR . 'includes/class-rest-api.php';
 require_once GRT_PLUGIN_DIR . 'includes/class-ocr-processor.php';
 require_once GRT_PLUGIN_DIR . 'includes/class-receipt-parser.php';
+require_once GRT_PLUGIN_DIR . 'includes/class-llm-settings.php';
 
 register_activation_hook( __FILE__, array( 'GRT_Activator', 'activate' ) );
+
+GRT_LLM_Settings::init();
 
 add_action( 'rest_api_init', array( 'GRT_REST_API', 'register_routes' ) );
 
@@ -75,8 +78,7 @@ add_shortcode( 'grocery_tracker', 'grt_shortcode' );
  * Admin notice if Tesseract is not available.
  */
 function grt_admin_notices() {
-    $tesseract_path = @exec( 'which tesseract' );
-    if ( empty( $tesseract_path ) ) {
+    if ( ! is_executable( '/usr/bin/tesseract' ) ) {
         echo '<div class="notice notice-warning"><p>';
         echo esc_html__( 'Grocery Receipt Tracker: Tesseract OCR is not installed. Receipt scanning will not work.', 'grocery-receipt-tracker' );
         echo '</p></div>';
