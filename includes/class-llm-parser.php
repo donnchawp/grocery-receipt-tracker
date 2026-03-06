@@ -148,7 +148,6 @@ PROMPT;
         $model = get_option( 'grt_llm_model', 'qwen2.5:3b' );
 
         $prompt = sprintf( self::PROMPT_TEMPLATE, $raw_text );
-        error_log( "GRT LLM Parser: OCR text:\n" . $raw_text );
         $response = wp_remote_post(
             $host . '/api/generate',
             array(
@@ -166,26 +165,21 @@ PROMPT;
         );
 
         if ( is_wp_error( $response ) ) {
-            error_log( 'GRT LLM Parser: request failed — ' . $response->get_error_message() );
             return $this->failure();
         }
 
         $code = wp_remote_retrieve_response_code( $response );
         if ( 200 !== $code ) {
-            error_log( 'GRT LLM Parser: unexpected status ' . $code );
             return $this->failure();
         }
 
         $body = json_decode( wp_remote_retrieve_body( $response ), true );
         if ( ! isset( $body['response'] ) ) {
-            error_log( 'GRT LLM Parser: missing response field' );
             return $this->failure();
         }
 
-        error_log( 'GRT LLM Parser: LLM response: ' . $body['response'] );
         $data = json_decode( $body['response'], true );
         if ( ! is_array( $data ) ) {
-            error_log( 'GRT LLM Parser: invalid JSON in response' );
             return $this->failure();
         }
 
@@ -224,7 +218,6 @@ PROMPT;
 
     public function parse_image( string $image_path ): array {
         if ( ! file_exists( $image_path ) || ! is_readable( $image_path ) ) {
-            error_log( 'GRT LLM Parser: image not readable — ' . $image_path );
             return $this->failure();
         }
 
@@ -243,7 +236,6 @@ PROMPT;
 
         $image_data = base64_encode( file_get_contents( $image_path ) );
 
-        error_log( 'GRT LLM Parser: sending image to vision model ' . $model );
         $response = wp_remote_post(
             $host . '/api/generate',
             array(
@@ -267,26 +259,21 @@ PROMPT;
         );
 
         if ( is_wp_error( $response ) ) {
-            error_log( 'GRT LLM Parser: vision request failed — ' . $response->get_error_message() );
             return $this->failure();
         }
 
         $code = wp_remote_retrieve_response_code( $response );
         if ( 200 !== $code ) {
-            error_log( 'GRT LLM Parser: vision unexpected status ' . $code );
             return $this->failure();
         }
 
         $body = json_decode( wp_remote_retrieve_body( $response ), true );
         if ( ! isset( $body['response'] ) ) {
-            error_log( 'GRT LLM Parser: vision missing response field' );
             return $this->failure();
         }
 
-        error_log( 'GRT LLM Parser: LLM response: ' . $body['response'] );
         $data = json_decode( $body['response'], true );
         if ( ! is_array( $data ) ) {
-            error_log( 'GRT LLM Parser: vision invalid JSON in response' );
             return $this->failure();
         }
 
@@ -302,7 +289,6 @@ PROMPT;
     private function parse_image_gemini( string $image_path ): array {
         $api_key = get_option( 'grt_gemini_api_key', '' );
         if ( empty( $api_key ) ) {
-            error_log( 'GRT LLM Parser: Gemini API key not configured' );
             return $this->failure();
         }
 
@@ -312,7 +298,6 @@ PROMPT;
 
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent';
 
-        error_log( 'GRT LLM Parser: sending image to Gemini model ' . $model );
         $response = wp_remote_post(
             $url,
             array(
@@ -347,29 +332,23 @@ PROMPT;
         );
 
         if ( is_wp_error( $response ) ) {
-            error_log( 'GRT LLM Parser: Gemini request failed — ' . $response->get_error_message() );
             return $this->failure();
         }
 
         $code = wp_remote_retrieve_response_code( $response );
         if ( 200 !== $code ) {
-            error_log( 'GRT LLM Parser: Gemini unexpected status ' . $code . ' — ' . wp_remote_retrieve_body( $response ) );
             return $this->failure();
         }
 
         $body = json_decode( wp_remote_retrieve_body( $response ), true );
         $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? null;
         if ( null === $text ) {
-            error_log( 'GRT LLM Parser: Gemini missing response text' );
             return $this->failure();
         }
-
-        error_log( 'GRT LLM Parser: Gemini response: ' . $text );
 
         // Extract the last JSON block from the chain-of-thought response.
         $data = $this->extract_json( $text );
         if ( null === $data ) {
-            error_log( 'GRT LLM Parser: Gemini — no valid JSON found in response' );
             return $this->failure();
         }
 

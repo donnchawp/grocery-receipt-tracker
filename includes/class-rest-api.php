@@ -6,6 +6,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class GRT_REST_API {
 
+    /**
+     * Get a prefixed custom table name.
+     *
+     * @param string $table Base table name (e.g. 'receipts').
+     * @return string Full table name with WP prefix.
+     */
+    private static function table( string $table ): string {
+        global $wpdb;
+        return $wpdb->prefix . 'grt_' . $table;
+    }
+
     public static function register_routes() {
         // Receipt scanning (OCR)
         register_rest_route( 'grt/v1', '/receipts/scan', array(
@@ -146,7 +157,9 @@ class GRT_REST_API {
      */
     public static function create_receipt( WP_REST_Request $request ) {
         global $wpdb;
-        $prefix = $wpdb->prefix . 'grt_';
+        $receipts_table      = self::table( 'receipts' );
+        $receipt_items_table  = self::table( 'receipt_items' );
+        $price_history_table = self::table( 'price_history' );
 
         $body = $request->get_json_params();
 
@@ -171,8 +184,9 @@ class GRT_REST_API {
         $total = array_sum( array_column( $items, 'final_price' ) ) - $voucher_discount;
 
         // Insert receipt.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->insert(
-            $prefix . 'receipts',
+            $receipts_table,
             array(
                 'user_id'             => get_current_user_id(),
                 'store'               => $store,
@@ -195,8 +209,9 @@ class GRT_REST_API {
         foreach ( $items as $item ) {
             $product_id = self::resolve_product( $item );
 
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
             $wpdb->insert(
-                $prefix . 'receipt_items',
+                $receipt_items_table,
                 array(
                     'receipt_id'     => $receipt_id,
                     'product_id'     => $product_id,
@@ -213,8 +228,9 @@ class GRT_REST_API {
 
             // Update price history.
             if ( $product_id ) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
                 $wpdb->insert(
-                    $prefix . 'price_history',
+                    $price_history_table,
                     array(
                         'product_id'      => $product_id,
                         'receipt_item_id' => $receipt_item_id,
@@ -238,7 +254,7 @@ class GRT_REST_API {
      */
     private static function resolve_product( array $item ): ?int {
         global $wpdb;
-        $prefix = $wpdb->prefix . 'grt_';
+        $products_table = self::table( 'products' );
 
         // If product_id provided (user matched existing product), use it.
         if ( ! empty( $item['product_id'] ) ) {
@@ -251,18 +267,19 @@ class GRT_REST_API {
         }
 
         // Check if product already exists by canonical name.
-        $existing = $wpdb->get_var( $wpdb->prepare(
-            "SELECT id FROM {$prefix}products WHERE canonical_name = %s",
-            $name
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $existing = $wpdb->get_var(
+            $wpdb->prepare( 'SELECT id FROM %i WHERE canonical_name = %s', $products_table, $name )
+        );
 
         if ( $existing ) {
             return (int) $existing;
         }
 
         // Create new product.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->insert(
-            $prefix . 'products',
+            $products_table,
             array(
                 'canonical_name' => $name,
                 'brand'          => sanitize_text_field( $item['brand'] ?? '' ) ?: null,
@@ -279,36 +296,44 @@ class GRT_REST_API {
      */
     public static function list_receipts( WP_REST_Request $request ) {
         global $wpdb;
-        $prefix = $wpdb->prefix . 'grt_';
+        $receipts_table = self::table( 'receipts' );
 
         $page     = $request->get_param( 'page' );
         $per_page = $request->get_param( 'per_page' );
         $store    = $request->get_param( 'store' );
         $offset   = ( $page - 1 ) * $per_page;
 
-        $where = 'WHERE user_id = %d';
-        $args  = array( get_current_user_id() );
+        $query        = 'SELECT COUNT(*) FROM %i WHERE user_id = %d';
+        $prepare_args = array( $receipts_table, get_current_user_id() );
 
         if ( $store ) {
-            $where .= ' AND store = %s';
-            $args[] = $store;
+            $query         .= ' AND store = %s';
+            $prepare_args[] = $store;
         }
 
-        $total = $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$prefix}receipts {$where}",
-            ...$args
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- $query contains only placeholders (%i, %d, %s), not user input.
+        $total = $wpdb->get_var(
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $wpdb->prepare( $query, ...$prepare_args )
+        );
 
-        $args[] = $per_page;
-        $args[] = $offset;
+        $results_query        = 'SELECT id, store, receipt_date, total, voucher_discount, image_attachment_id, created_at FROM %i WHERE user_id = %d';
+        $results_prepare_args = array( $receipts_table, get_current_user_id() );
 
-        $receipts = $wpdb->get_results( $wpdb->prepare(
-            "SELECT id, store, receipt_date, total, voucher_discount, image_attachment_id, created_at
-             FROM {$prefix}receipts {$where}
-             ORDER BY receipt_date DESC
-             LIMIT %d OFFSET %d",
-            ...$args
-        ) );
+        if ( $store ) {
+            $results_query         .= ' AND store = %s';
+            $results_prepare_args[] = $store;
+        }
+
+        $results_query         .= ' ORDER BY receipt_date DESC LIMIT %d OFFSET %d';
+        $results_prepare_args[] = $per_page;
+        $results_prepare_args[] = $offset;
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- $results_query contains only placeholders (%i, %d, %s), not user input.
+        $receipts = $wpdb->get_results(
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $wpdb->prepare( $results_query, ...$results_prepare_args )
+        );
 
         $response = rest_ensure_response( $receipts );
         $response->header( 'X-WP-Total', (int) $total );
@@ -322,26 +347,29 @@ class GRT_REST_API {
      */
     public static function get_receipt( WP_REST_Request $request ) {
         global $wpdb;
-        $prefix = $wpdb->prefix . 'grt_';
-        $id     = absint( $request['id'] );
+        $receipts_table      = self::table( 'receipts' );
+        $receipt_items_table  = self::table( 'receipt_items' );
+        $products_table      = self::table( 'products' );
+        $id                  = absint( $request['id'] );
 
-        $receipt = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$prefix}receipts WHERE id = %d AND user_id = %d",
-            $id,
-            get_current_user_id()
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $receipt = $wpdb->get_row(
+            $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d AND user_id = %d', $receipts_table, $id, get_current_user_id() )
+        );
 
         if ( ! $receipt ) {
             return new WP_Error( 'not_found', 'Receipt not found.', array( 'status' => 404 ) );
         }
 
-        $items = $wpdb->get_results( $wpdb->prepare(
-            "SELECT ri.*, p.canonical_name, p.brand, p.category
-             FROM {$prefix}receipt_items ri
-             LEFT JOIN {$prefix}products p ON ri.product_id = p.id
-             WHERE ri.receipt_id = %d",
-            $id
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $items = $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT ri.*, p.canonical_name, p.brand, p.category FROM %i ri LEFT JOIN %i p ON ri.product_id = p.id WHERE ri.receipt_id = %d',
+                $receipt_items_table,
+                $products_table,
+                $id
+            )
+        );
 
         $receipt->items     = $items;
         $receipt->image_url = $receipt->image_attachment_id
@@ -356,33 +384,44 @@ class GRT_REST_API {
      */
     public static function delete_receipt( WP_REST_Request $request ) {
         global $wpdb;
-        $prefix = $wpdb->prefix . 'grt_';
-        $id     = absint( $request['id'] );
+        $receipts_table      = self::table( 'receipts' );
+        $receipt_items_table  = self::table( 'receipt_items' );
+        $price_history_table = self::table( 'price_history' );
+        $id                  = absint( $request['id'] );
 
         // Verify ownership.
-        $receipt = $wpdb->get_row( $wpdb->prepare(
-            "SELECT id, image_attachment_id FROM {$prefix}receipts WHERE id = %d AND user_id = %d",
-            $id,
-            get_current_user_id()
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $receipt = $wpdb->get_row(
+            $wpdb->prepare(
+                'SELECT id, image_attachment_id FROM %i WHERE id = %d AND user_id = %d',
+                $receipts_table,
+                $id,
+                get_current_user_id()
+            )
+        );
 
         if ( ! $receipt ) {
             return new WP_Error( 'not_found', 'Receipt not found.', array( 'status' => 404 ) );
         }
 
         // Delete price history entries for this receipt's items.
-        $wpdb->query( $wpdb->prepare(
-            "DELETE ph FROM {$prefix}price_history ph
-             INNER JOIN {$prefix}receipt_items ri ON ph.receipt_item_id = ri.id
-             WHERE ri.receipt_id = %d",
-            $id
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->query(
+            $wpdb->prepare(
+                'DELETE ph FROM %i ph INNER JOIN %i ri ON ph.receipt_item_id = ri.id WHERE ri.receipt_id = %d',
+                $price_history_table,
+                $receipt_items_table,
+                $id
+            )
+        );
 
         // Delete receipt items.
-        $wpdb->delete( $prefix . 'receipt_items', array( 'receipt_id' => $id ), array( '%d' ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->delete( $receipt_items_table, array( 'receipt_id' => $id ), array( '%d' ) );
 
         // Delete receipt.
-        $wpdb->delete( $prefix . 'receipts', array( 'id' => $id ), array( '%d' ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->delete( $receipts_table, array( 'id' => $id ), array( '%d' ) );
 
         // Optionally delete the attachment.
         if ( $receipt->image_attachment_id ) {
@@ -397,31 +436,31 @@ class GRT_REST_API {
      */
     public static function list_products( WP_REST_Request $request ) {
         global $wpdb;
-        $prefix = $wpdb->prefix . 'grt_';
+        $products_table = self::table( 'products' );
 
         $search   = $request->get_param( 'search' );
         $category = $request->get_param( 'category' );
 
-        $where = '1=1';
-        $args  = array();
+        $query        = 'SELECT * FROM %i WHERE 1=1';
+        $prepare_args = array( $products_table );
 
         if ( $search ) {
-            $where .= ' AND canonical_name LIKE %s';
-            $args[] = '%' . $wpdb->esc_like( $search ) . '%';
+            $query         .= ' AND canonical_name LIKE %s';
+            $prepare_args[] = '%' . $wpdb->esc_like( $search ) . '%';
         }
 
         if ( $category ) {
-            $where .= ' AND category = %s';
-            $args[] = $category;
+            $query         .= ' AND category = %s';
+            $prepare_args[] = $category;
         }
 
-        $query = "SELECT * FROM {$prefix}products WHERE {$where} ORDER BY canonical_name ASC LIMIT 100";
+        $query .= ' ORDER BY canonical_name ASC LIMIT 100';
 
-        if ( ! empty( $args ) ) {
-            $products = $wpdb->get_results( $wpdb->prepare( $query, ...$args ) );
-        } else {
-            $products = $wpdb->get_results( $query );
-        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- $query contains only placeholders (%i, %s), not user input.
+        $products = $wpdb->get_results(
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $wpdb->prepare( $query, ...$prepare_args )
+        );
 
         return rest_ensure_response( $products );
     }
@@ -431,9 +470,9 @@ class GRT_REST_API {
      */
     public static function update_product( WP_REST_Request $request ) {
         global $wpdb;
-        $prefix = $wpdb->prefix . 'grt_';
-        $id     = absint( $request['id'] );
-        $body   = $request->get_json_params();
+        $products_table = self::table( 'products' );
+        $id             = absint( $request['id'] );
+        $body           = $request->get_json_params();
 
         $data   = array();
         $format = array();
@@ -455,12 +494,13 @@ class GRT_REST_API {
             return new WP_Error( 'no_data', 'No fields to update.', array( 'status' => 400 ) );
         }
 
-        $wpdb->update( $prefix . 'products', $data, array( 'id' => $id ), $format, array( '%d' ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->update( $products_table, $data, array( 'id' => $id ), $format, array( '%d' ) );
 
-        $product = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$prefix}products WHERE id = %d",
-            $id
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $product = $wpdb->get_row(
+            $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', $products_table, $id )
+        );
 
         return rest_ensure_response( $product );
     }
@@ -470,16 +510,17 @@ class GRT_REST_API {
      */
     public static function get_price_history( WP_REST_Request $request ) {
         global $wpdb;
-        $prefix = $wpdb->prefix . 'grt_';
-        $id     = absint( $request['id'] );
+        $price_history_table = self::table( 'price_history' );
+        $id                  = absint( $request['id'] );
 
-        $history = $wpdb->get_results( $wpdb->prepare(
-            "SELECT price_date, store, final_price
-             FROM {$prefix}price_history
-             WHERE product_id = %d
-             ORDER BY price_date ASC",
-            $id
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $history = $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT price_date, store, final_price FROM %i WHERE product_id = %d ORDER BY price_date ASC',
+                $price_history_table,
+                $id
+            )
+        );
 
         // Compute stats.
         $prices = array_column( $history, 'final_price' );
@@ -507,18 +548,19 @@ class GRT_REST_API {
      */
     public static function get_category_analytics( WP_REST_Request $request ) {
         global $wpdb;
-        $prefix   = $wpdb->prefix . 'grt_';
-        $category = sanitize_text_field( $request['category'] );
+        $price_history_table = self::table( 'price_history' );
+        $products_table      = self::table( 'products' );
+        $category            = sanitize_text_field( $request['category'] );
 
-        $trends = $wpdb->get_results( $wpdb->prepare(
-            "SELECT ph.price_date, AVG(ph.final_price) as avg_price, COUNT(*) as item_count
-             FROM {$prefix}price_history ph
-             INNER JOIN {$prefix}products p ON ph.product_id = p.id
-             WHERE p.category = %s
-             GROUP BY ph.price_date
-             ORDER BY ph.price_date ASC",
-            $category
-        ) );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        $trends = $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT ph.price_date, AVG(ph.final_price) as avg_price, COUNT(*) as item_count FROM %i ph INNER JOIN %i p ON ph.product_id = p.id WHERE p.category = %s GROUP BY ph.price_date ORDER BY ph.price_date ASC',
+                $price_history_table,
+                $products_table,
+                $category
+            )
+        );
 
         return rest_ensure_response( array(
             'category' => $category,

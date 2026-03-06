@@ -1,0 +1,16 @@
+.claude
+.git
+.gitignore
+.wp-env.json
+.distignore
+docker
+docs
+node_modules
+src
+whats-next.md
+Grocery-Receipt-Tracker-PRD.md
+AGENTS.md
+CLAUDE.md
+Makefile
+package.json
+package-lock.json
