@@ -52,35 +52,77 @@ ollama serve        # Start the Ollama server
 
 Then enable in WP Admin > Settings > Receipt Tracker LLM.
 
-## CSV Import
+## Scanning Receipts with Claude Code
 
-The most reliable way to import receipts is to photograph the receipt, send the image to a paid-tier AI model (Claude or ChatGPT), and paste the resulting CSV into the plugin. Local LLMs and free-tier Gemini models tend to produce garbled store names, missing items, and incorrect prices — paid models like Claude Sonnet or GPT-4o are significantly more accurate.
+The fastest way to import a receipt is the `/scan-receipt` slash command in Claude Code. It uses Claude's vision to read the receipt image, extracts items, shows you a confirmation table, and submits directly to the plugin's API.
 
-Use this prompt with your receipt image:
+### Prerequisites
+
+1. **wp-env running** — `make env-start`
+2. **API key generated** — go to **WP Admin → Settings → Receipt Tracker** and click "Generate API Key". Copy the key.
+3. **`env-config.txt` created** in the project root:
 
 ```
-Parse this grocery receipt image into CSV with exactly this format:
+GRT_API_URL=http://localhost:8888
+GRT_API_KEY=your_api_key_here
+```
 
+This file is gitignored — it won't be committed.
+
+### Usage
+
+Two ways to provide the receipt image:
+
+```bash
+# Option 1: pass the image path as an argument
+/scan-receipt path/to/receipt.jpg
+
+# Option 2: paste/drop the image into the terminal first, then run
+/scan-receipt
+```
+
+### What happens
+
+1. Claude reads `env-config.txt` for the API URL and key
+2. Claude analyzes the receipt image — transcribes every line, identifies the store, classifies items vs discounts vs totals
+3. A confirmation table is displayed with store, date, items, prices, and discounts
+4. You approve or request corrections
+5. On approval, the data is POSTed as CSV to the plugin's `import-csv` endpoint
+6. The receipt ID and total are reported back
+
+### Troubleshooting
+
+- **"env-config.txt not found"** — create the file as shown above
+- **Connection refused** — make sure wp-env is running (`make env-start`)
+- **401 Unauthorized** — check the API key matches what's in WP Admin → Settings → Receipt Tracker
+- **Incorrect items** — say "no" at the confirmation step and describe what needs fixing
+
+## CSV Import
+
+For bulk or manual imports, you can also use CSV paste or the REST API directly.
+
+### Paste in App
+
+Use the "Paste CSV" button on the dashboard to paste AI-generated CSV output.
+
+### API Import
+
+Submit CSV directly via REST API. Generate an API key and copy the Claude prompt from **WP Admin > Settings > Receipt Tracker**. The prompt tells Claude to parse the receipt and output a `curl` command to submit it to your site.
+
+**Endpoint:** `POST /wp-json/grt/v1/receipts/import-csv`
+- Headers: `Content-Type: text/plain`, `X-GRT-API-Key: <key>`
+- Body: raw CSV text
+
+### CSV Format
+
+```
 store,date,voucher_discount
 <store name>,<YYYY-MM-DD>,<voucher discount or 0>
 name,quantity,price,discount
 <item name>,<quantity>,<price>,<discount or 0>
-
-Rules:
-- One row per line item on the receipt
-- price = the original price before any discount
-- discount = the amount subtracted for that item (0 if none)
-- voucher_discount = any whole-receipt voucher/coupon amount (0 if none)
-- Use the exact item names as printed on the receipt
-- Date format must be YYYY-MM-DD
-- No currency symbols, just numbers
-- No quotes around fields
-- Omit subtotals, totals, tax lines, and payment method lines
-
-Return only the CSV, no explanation.
 ```
 
-Then click "Paste CSV" on the dashboard and paste the output.
+Rules: one row per line item, `price` = original price before discount, `discount` = amount subtracted (0 if none), `voucher_discount` = whole-receipt coupon (0 if none). YYYY-MM-DD dates, no currency symbols, no quotes. Omit subtotals/totals/tax/payment lines.
 
 ## Architecture
 

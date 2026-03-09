@@ -3,3 +3,4 @@ build/
 vendor/
 .DS_Store
 *.log
+env-config.txt

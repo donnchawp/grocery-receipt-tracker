@@ -86,10 +86,42 @@ class GRT_REST_API {
             'callback'            => array( __CLASS__, 'get_category_analytics' ),
             'permission_callback' => array( __CLASS__, 'check_permission' ),
         ) );
+
+        // CSV Import (external tools like Claude).
+        register_rest_route( 'grt/v1', '/receipts/import-csv', array(
+            'methods'             => 'POST',
+            'callback'            => array( __CLASS__, 'import_csv' ),
+            'permission_callback' => array( __CLASS__, 'check_api_key_permission' ),
+        ) );
     }
 
     public static function check_permission(): bool {
         return current_user_can( 'edit_posts' );
+    }
+
+    /**
+     * Permission check that also accepts an API key header.
+     */
+    public static function check_api_key_permission( WP_REST_Request $request ): bool {
+        if ( current_user_can( 'edit_posts' ) ) {
+            return true;
+        }
+
+        $api_key    = $request->get_header( 'X-GRT-API-Key' );
+        $stored_key = get_option( 'grt_api_key', '' );
+
+        if ( empty( $stored_key ) || empty( $api_key ) ) {
+            return false;
+        }
+
+        if ( ! hash_equals( $stored_key, $api_key ) ) {
+            return false;
+        }
+
+        $user_id = (int) get_option( 'grt_api_key_user_id', 1 );
+        wp_set_current_user( $user_id );
+
+        return true;
     }
 
     /**
@@ -180,8 +212,14 @@ class GRT_REST_API {
             return new WP_Error( 'invalid_date', 'Date must be a valid YYYY-MM-DD.', array( 'status' => 400 ) );
         }
 
-        // Calculate total.
-        $total = array_sum( array_column( $items, 'final_price' ) ) - $voucher_discount;
+        // final_price is per-unit; multiply by quantity for line totals.
+        $total = array_reduce(
+            $items,
+            static function ( $carry, $item ) {
+                return $carry + ( (float) $item['final_price'] * (float) $item['quantity'] );
+            },
+            0.0
+        ) - $voucher_discount;
 
         // Insert receipt.
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
@@ -289,6 +327,114 @@ class GRT_REST_API {
         );
 
         return $wpdb->insert_id ?: null;
+    }
+
+    /**
+     * POST /receipts/import-csv — Accept raw CSV text, parse and save.
+     */
+    public static function import_csv( WP_REST_Request $request ) {
+        $csv = $request->get_body();
+
+        if ( empty( trim( $csv ) ) ) {
+            return new WP_Error( 'empty_body', 'No CSV data provided.', array( 'status' => 400 ) );
+        }
+
+        $parsed = self::parse_csv( $csv );
+
+        if ( is_wp_error( $parsed ) ) {
+            return $parsed;
+        }
+
+        // Reuse create_receipt via a synthetic JSON request.
+        $json_request = new WP_REST_Request( 'POST' );
+        $json_request->set_header( 'Content-Type', 'application/json' );
+        $json_request->set_body( wp_json_encode( $parsed ) );
+
+        return self::create_receipt( $json_request );
+    }
+
+    /**
+     * Parse CSV text into receipt data array.
+     *
+     * @param string $text Raw CSV text.
+     * @return array|WP_Error Parsed receipt data or error.
+     */
+    private static function parse_csv( string $text ) {
+        $text  = str_replace( "\r", '', $text );
+        $lines = array_values( array_filter( array_map( 'trim', explode( "\n", trim( $text ) ) ) ) );
+
+        if ( count( $lines ) < 4 ) {
+            return new WP_Error( 'invalid_csv', 'CSV must have at least 4 rows (metadata header, metadata, items header, item).', array( 'status' => 400 ) );
+        }
+
+        // Row 0: metadata headers.
+        $meta_headers = array_map( 'strtolower', array_map( 'trim', explode( ',', $lines[0] ) ) );
+
+        if ( ( $meta_headers[0] ?? '' ) !== 'store' || ( $meta_headers[1] ?? '' ) !== 'date' || ( $meta_headers[2] ?? '' ) !== 'voucher_discount' ) {
+            return new WP_Error( 'invalid_csv', 'First row must be: store,date,voucher_discount', array( 'status' => 400 ) );
+        }
+
+        // Row 1: metadata values.
+        $meta_values      = array_map( 'trim', explode( ',', $lines[1] ) );
+        $store            = $meta_values[0] ?? '';
+        $date             = $meta_values[1] ?? '';
+        $voucher_discount = (float) ( $meta_values[2] ?? 0 );
+
+        if ( empty( $store ) ) {
+            return new WP_Error( 'invalid_csv', 'Store name is empty.', array( 'status' => 400 ) );
+        }
+
+        if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+            return new WP_Error( 'invalid_csv', 'Date must be YYYY-MM-DD format.', array( 'status' => 400 ) );
+        }
+
+        // Row 2: item headers.
+        $item_headers = array_map( 'strtolower', array_map( 'trim', explode( ',', $lines[2] ) ) );
+
+        if ( ( $item_headers[0] ?? '' ) !== 'name' || ( $item_headers[1] ?? '' ) !== 'quantity' || ( $item_headers[2] ?? '' ) !== 'price' || ( $item_headers[3] ?? '' ) !== 'discount' ) {
+            return new WP_Error( 'invalid_csv', 'Third row must be: name,quantity,price,discount', array( 'status' => 400 ) );
+        }
+
+        // Rows 3+: items.
+        $items = array();
+        $count = count( $lines );
+
+        for ( $i = 3; $i < $count; $i++ ) {
+            $parts = array_map( 'trim', explode( ',', $lines[ $i ] ) );
+
+            if ( count( $parts ) < 4 ) {
+                return new WP_Error( 'invalid_csv', sprintf( 'Row %d: expected at least 4 columns.', $i + 1 ), array( 'status' => 400 ) );
+            }
+
+            $name           = $parts[0];
+            $quantity       = (float) $parts[1];
+            $original_price = (float) $parts[2];
+            $discount       = (float) $parts[3];
+
+            if ( empty( $name ) ) {
+                return new WP_Error( 'invalid_csv', sprintf( 'Row %d: item name is empty.', $i + 1 ), array( 'status' => 400 ) );
+            }
+
+            // Discount in CSV is line-level; convert to per-unit to match frontend convention.
+            $per_unit_discount = $quantity > 0 ? $discount / $quantity : $discount;
+
+            $items[] = array(
+                'name'           => $name,
+                'quantity'       => $quantity,
+                'original_price' => $original_price,
+                'discount'       => $per_unit_discount,
+                'final_price'    => $original_price - $per_unit_discount,
+            );
+        }
+
+        return array(
+            'store'            => $store,
+            'date'             => $date,
+            'voucher_discount' => $voucher_discount,
+            'items'            => $items,
+            'raw_text'         => $text,
+            'attachment_id'    => 0,
+        );
     }
 
     /**
